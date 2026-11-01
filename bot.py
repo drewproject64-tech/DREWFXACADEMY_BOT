@@ -166,8 +166,9 @@ def main():
         if me.get('username', '').lower() != USERNAME.lower():
             raise SystemExit('BOT_TOKEN belongs to a different username. Use the token for @' + USERNAME)
         api.call('setMyName', name=NAME)
-        api.call('setMyShortDescription', short_description=ABOUT)
-        api.call('setMyDescription', description=DESCRIPTION)
+        for language in ('', 'en'):
+            api.call('setMyShortDescription', short_description=ABOUT, language_code=language)
+            api.call('setMyDescription', description=DESCRIPTION, language_code=language)
         commands = [('start', 'Open the three learning tools'), ('lessons', 'Read short lessons'), ('quiz', 'Practice with explanations'), ('plan', 'Calculate a study timetable'), ('menu', 'Return to main menu'), ('help', 'How to use this bot'), ('about', 'About DREW FX ACADEMY'), ('privacy', 'Data and privacy information')]
         api.call('setMyCommands', commands=[{'command': c, 'description': d} for c, d in commands])
         api.call('deleteWebhook', drop_pending_updates=False)
