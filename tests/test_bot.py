@@ -1,57 +1,48 @@
 import unittest
 import bot
 
-class FakeAPI:
-    def __init__(self):
-        self.calls = []
-    def call(self, method, **data):
-        self.calls.append((method, data))
-    def send(self, chat, text, markup=bot.MENU):
-        self.calls.append(('sendMessage', dict(chat_id=chat, text=text, reply_markup=markup)))
+class API:
+    def __init__(self): self.calls = []
+    def call(self, method, **data): self.calls.append((method, data))
+    def send(self, chat, text, markup=bot.MENU): self.calls.append(('sendMessage', {'text': text, 'reply_markup': markup}))
 
-class BotTests(unittest.TestCase):
-    def message(self, api, text):
-        bot.handle(api, {'message': {'chat': {'id': 123, 'type': 'private'}, 'text': text}})
-    def callback(self, api, data):
-        bot.handle(api, {'callback_query': {'id': 'q', 'data': data, 'message': {'chat': {'id': 123, 'type': 'private'}}}})
-    def test_three_tools_and_commands(self):
-        self.assertEqual(len(bot.MENU['keyboard']), 3)
-        api = FakeAPI()
-        for text in ['/start', '/start campaign', '/lessons', '/quiz', '/plan', 'Lessons', 'Quick quiz', 'Study calculator', '/help', '/privacy', '/about', '/unknown', '', '/plan@DREWFXACADEMY_BOT 60']:
-            self.message(api, text)
-            self.assertEqual(api.calls[-1][0], 'sendMessage')
-    def test_quiz_buttons_and_answers(self):
-        api = FakeAPI()
-        self.message(api, 'Quick quiz')
-        rows = api.calls[-1][1]['reply_markup']['inline_keyboard']
-        self.assertEqual(len(rows), 3)
-        for index, (_, options, correct, explanation) in enumerate(bot.QUESTIONS):
-            for choice in range(3):
-                self.callback(api, f'quiz:{index}:{choice}')
-                self.assertIn(options[correct], api.calls[-1][1]['text'])
-                self.assertIn(explanation, api.calls[-1][1]['text'])
-        self.callback(api, 'quiz:-1:0')
-        self.assertIn('new question', api.calls[-1][1]['text'])
-    def test_calculator(self):
-        api = FakeAPI()
-        for n in (30, 60, 90):
-            self.callback(api, f'plan:{n}')
-            self.assertIn(f'Total including break: {n}', api.calls[-1][1]['text'])
-        for text in ['/plan abc', '/plan -1', '/plan 60 3', '/plan 0']:
-            self.message(api, text)
-            self.assertIn('Choose your total study time', api.calls[-1][1]['text'])
-    def test_old_buttons_and_expired_callback(self):
-        class ExpiredAPI(FakeAPI):
-            def call(self, method, **data):
-                raise bot.APIError(400)
-        api = ExpiredAPI()
-        self.callback(api, 'plan:60')
-        self.assertIn('60-minute', api.calls[-1][1]['text'])
-        self.callback(api, 'answer:0:1')
-        self.assertIn('older button', api.calls[-1][1]['text'])
-    def test_profile_limits(self):
+class Tests(unittest.TestCase):
+    def setUp(self):
+        bot.SESSIONS.clear()
+        self.api = API()
+    def msg(self, text):
+        bot.handle(self.api, {'message': {'chat': {'id': 1, 'type': 'private'}, 'text': text}})
+    def test_count(self):
+        result = bot.transform('count', 'one two\nthree')
+        self.assertIn('whitespace): 3', result)
+        self.assertIn('spaces): 13', result)
+        self.assertIn('Lines: 2', result)
+    def test_case_and_cleanup(self):
+        self.assertEqual(bot.transform('case', 'Hello')[0], 'UPPERCASE\nHELLO')
+        self.assertEqual(bot.transform('case', 'Hello')[1], 'lowercase\nhello')
+        self.assertEqual(bot.transform('clean', '  a   b \n c\t d  '), 'Cleaned text:\na b\nc d')
+    def test_all_button_flows(self):
+        for button in bot.MODES:
+            self.msg(button)
+            self.msg('Hello   world')
+            self.assertEqual(self.api.calls[-1][0], 'sendMessage')
+        self.msg('/cancel')
+        self.assertNotIn(1, bot.SESSIONS)
+        for command in ('/count hi there', '/case@DREWFXACADEMY_BOT Hello', '/clean hi   there', '/start campaign', '/help', '/privacy'):
+            self.msg(command)
+            self.assertEqual(self.api.calls[-1][0], 'sendMessage')
+    def test_limits_and_unicode(self):
+        for text in (' ', 'x'*1501):
+            with self.assertRaises(ValueError): bot.transform('case', text)
+        self.msg('/case ' + '\U0001F600'*1500)
+        for method, data in self.api.calls:
+            if method == 'sendMessage':
+                self.assertLessEqual(len(data['text'].encode('utf-16-le'))//2, 3500)
+    def test_metadata_and_old_callbacks(self):
         self.assertLessEqual(len(bot.ABOUT), 120)
         self.assertLessEqual(len(bot.DESCRIPTION), 512)
+        self.assertEqual(len(bot.MENU['keyboard']), 3)
+        bot.handle(self.api, {'callback_query': {'id': 'x', 'data': 'plan:60', 'message': {'chat': {'id': 1, 'type': 'private'}}}})
+        self.assertIn('updated', self.api.calls[-1][1]['text'])
 
-if __name__ == '__main__':
-    unittest.main()
+if __name__ == '__main__': unittest.main()
