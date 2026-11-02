@@ -7,52 +7,51 @@ class FakeAPI:
     def call(self, method, **data):
         self.calls.append((method, data))
     def send(self, chat, text, markup=bot.MENU):
-        self.calls.append(('sendMessage', {'chat_id': chat, 'text': text, 'reply_markup': markup}))
+        self.calls.append(('sendMessage', dict(chat_id=chat, text=text, reply_markup=markup)))
 
 class BotTests(unittest.TestCase):
     def message(self, api, text):
         bot.handle(api, {'message': {'chat': {'id': 123, 'type': 'private'}, 'text': text}})
     def callback(self, api, data):
-        bot.handle(api, {'callback_query': {'id': 'q', 'data': data, 'message': {'message_id': 1, 'chat': {'id': 123, 'type': 'private'}}}})
-    def test_expired_callback_and_already_edited_quiz(self):
-        class OldMessageAPI(FakeAPI):
+        bot.handle(api, {'callback_query': {'id': 'q', 'data': data, 'message': {'chat': {'id': 123, 'type': 'private'}}}})
+    def test_three_tools_and_commands(self):
+        self.assertEqual(len(bot.MENU['keyboard']), 3)
+        api = FakeAPI()
+        for text in ['/start', '/start campaign', '/lessons', '/quiz', '/plan', 'Lessons', 'Quick quiz', 'Study calculator', '/help', '/privacy', '/about', '/unknown', '', '/plan@DREWFXACADEMY_BOT 60']:
+            self.message(api, text)
+            self.assertEqual(api.calls[-1][0], 'sendMessage')
+    def test_quiz_buttons_and_answers(self):
+        api = FakeAPI()
+        self.message(api, 'Quick quiz')
+        rows = api.calls[-1][1]['reply_markup']['inline_keyboard']
+        self.assertEqual(len(rows), 3)
+        for index, (_, options, correct, explanation) in enumerate(bot.QUESTIONS):
+            for choice in range(3):
+                self.callback(api, f'quiz:{index}:{choice}')
+                self.assertIn(options[correct], api.calls[-1][1]['text'])
+                self.assertIn(explanation, api.calls[-1][1]['text'])
+        self.callback(api, 'quiz:-1:0')
+        self.assertIn('new question', api.calls[-1][1]['text'])
+    def test_calculator(self):
+        api = FakeAPI()
+        for n in (30, 60, 90):
+            self.callback(api, f'plan:{n}')
+            self.assertIn(f'Total including break: {n}', api.calls[-1][1]['text'])
+        for text in ['/plan abc', '/plan -1', '/plan 60 3', '/plan 0']:
+            self.message(api, text)
+            self.assertIn('Choose your total study time', api.calls[-1][1]['text'])
+    def test_old_buttons_and_expired_callback(self):
+        class ExpiredAPI(FakeAPI):
             def call(self, method, **data):
-                if method in ('answerCallbackQuery', 'editMessageReplyMarkup'):
-                    raise bot.APIError(400)
-                return super().call(method, **data)
-        api = OldMessageAPI()
+                raise bot.APIError(400)
+        api = ExpiredAPI()
+        self.callback(api, 'plan:60')
+        self.assertIn('60-minute', api.calls[-1][1]['text'])
         self.callback(api, 'answer:0:1')
-        self.assertIn('Correct.', api.calls[-1][1]['text'])
-        self.callback(api, 'lesson:0')
-        self.assertIn('Active recall', api.calls[-1][1]['text'])
-
+        self.assertIn('older button', api.calls[-1][1]['text'])
     def test_profile_limits(self):
         self.assertLessEqual(len(bot.ABOUT), 120)
         self.assertLessEqual(len(bot.DESCRIPTION), 512)
-    def test_planner_totals(self):
-        result = bot.plan(91, 3)
-        self.assertIn('Session 1: 31 minutes', result)
-        self.assertIn('Total elapsed time: 101 minutes', result)
-        for args in [(0, 1), (10, 0), (2, 3), (1441, 2), (60, 25)]:
-            with self.assertRaises(ValueError):
-                bot.plan(*args)
-    def test_commands_and_invalid_inputs(self):
-        api = FakeAPI()
-        for text in ['/start', '/help', '/about', '/privacy', '/lessons', '/quiz', 'Study planner', '/plan 90 3', '/plan x 3', '/plan 1 3', '/unknown', '/menu', '/plan@DREWFXACADEMY_BOT 90 3']:
-            self.message(api, text)
-            self.assertEqual(api.calls[-1][0], 'sendMessage')
-    def test_all_lessons_and_quiz_answers(self):
-        api = FakeAPI()
-        for i, (title, _) in enumerate(bot.LESSONS):
-            self.callback(api, f'lesson:{i}')
-            self.assertIn(title, api.calls[-1][1]['text'])
-        for i, (_, choices, correct, _) in enumerate(bot.QUESTIONS):
-            self.callback(api, f'quiz:{i}')
-            for answer in range(len(choices)):
-                self.callback(api, f'answer:{i}:{answer}')
-                self.assertIn('Correct.' if answer == correct else 'Keep practicing.', api.calls[-1][1]['text'])
-        self.callback(api, 'answer:-1:0')
-        self.assertIn('no longer valid', api.calls[-1][1]['text'])
 
 if __name__ == '__main__':
     unittest.main()
