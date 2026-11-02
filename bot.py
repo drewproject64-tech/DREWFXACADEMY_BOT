@@ -83,7 +83,12 @@ def plan(minutes, sessions):
 def handle(api, update):
     callback = update.get('callback_query')
     if callback:
-        api.call('answerCallbackQuery', callback_query_id=callback['id'])
+        try:
+            api.call('answerCallbackQuery', callback_query_id=callback['id'])
+        except APIError as exc:
+            if exc.code != 400:
+                raise
+            # Expired callbacks must not prevent the lesson or answer response.
         message = callback.get('message', {})
         if message.get('chat', {}).get('type') != 'private':
             return
@@ -111,7 +116,12 @@ def handle(api, update):
                 text = ('Correct.' if choice == correct else 'Keep practicing.') + '\nAnswer: ' + choices[correct] + '\n\n' + explanation
                 rows = [('Next question', f'quiz:{i + 1}')] if i + 1 < len(QUESTIONS) else [('Practice again', 'quiz:0')]
                 # Removing the answer buttons also prevents accidental repeated answers.
-                api.call('editMessageReplyMarkup', chat_id=chat, message_id=message['message_id'], reply_markup={'inline_keyboard': []})
+                try:
+                    api.call('editMessageReplyMarkup', chat_id=chat, message_id=message['message_id'], reply_markup={'inline_keyboard': []})
+                except APIError as exc:
+                    if exc.code != 400:
+                        raise
+                    # Already edited/old messages can still receive an explanation.
                 api.send(chat, text, inline(rows))
             else:
                 raise ValueError()
@@ -173,26 +183,36 @@ def main():
         api.call('setMyCommands', commands=[{'command': c, 'description': d} for c, d in commands])
         api.call('deleteWebhook', drop_pending_updates=False)
     except APIError as exc:
+        if exc.code in (0, 429) or exc.code >= 500:
+            logging.warning('Temporary startup failure (API code %s); restarting for retry.', exc.code)
         raise SystemExit(f'Startup failed (API code {exc.code}). Check token, network and Telegram permissions.') from None
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, stop)
+    logging.info('Verified @%s; profile and commands configured; starting polling.', USERNAME)
     offset = 0
     failures = 0
+    last_heartbeat = 0
     while RUNNING:
         try:
             updates = api.call('getUpdates', offset=offset, timeout=30, allowed_updates=['message', 'callback_query'])
             failures = 0
+            if time.monotonic() - last_heartbeat >= 300:
+                logging.info('Telegram polling healthy for @%s.', USERNAME)
+                last_heartbeat = time.monotonic()
             for update in updates:
                 try:
                     handle(api, update)
+                    logging.info('Processed Telegram update successfully.')
                 except APIError as exc:
                     if exc.code in (0, 429) or exc.code >= 500:
                         raise
                     logging.warning('Could not respond to update (API code %s)', exc.code)
                 offset = update['update_id'] + 1
         except APIError as exc:
-            if exc.code in (401, 409):
-                raise SystemExit('Polling stopped: invalid token or another bot instance is running.') from None
+            if exc.code == 401:
+                raise SystemExit('Polling stopped: invalid token.') from None
+            if exc.code == 409:
+                logging.warning('Polling conflict: waiting for the previous deployment to stop. Keep one replica.')
             failures += 1
             logging.warning('Temporary Telegram failure (API code %s); retrying.', exc.code)
             # Short sleeps allow SIGTERM to stop the process promptly.
