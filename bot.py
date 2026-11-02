@@ -1,40 +1,38 @@
-"""DREW FX ACADEMY: three self-contained educational tools, Python 3.12+."""
+"""Three simple educational tools for @DREWFXACADEMY_BOT. Python 3.12+."""
 import json
 import logging
 import os
+import random
 import signal
 import time
 from urllib import request, error
 
 NAME = 'DREW FX ACADEMY'
 USERNAME = 'DREWFXACADEMY_BOT'
-ABOUT = 'Free study and digital skills lessons, practice quizzes and a study timetable calculator.'
-DESCRIPTION = ('Welcome to DREW FX ACADEMY. Explore short lessons on study habits, critical thinking and digital safety; '
-               'answer practice questions with explanations; and calculate a study timetable. '
-               'All three tools work directly in this bot, free of charge. This bot provides general learning tools, '
-               'not trading signals, investment advice or financial services. Use /start to open the menu.')
-LESSONS = [
-    ('Active recall', 'After reading a short section, close it and write three things you remember. Check the source, correct mistakes, then try again later. Practice: read a paragraph and explain its main idea without looking.'),
-    ('Spaced practice', 'Spread practice across several days instead of putting everything into one session. Start with a review tomorrow, then in three days and one week. Adjust the gaps when recall is difficult. Practice: schedule three reviews of one topic.'),
-    ('Clear notes', 'Give each page a topic and a date. Write key ideas in your own words, add an example, and finish with one question. Practice: turn a long paragraph into three short points without changing its meaning.'),
-    ('Checking information', 'Find the original source, publication date and evidence. Separate a verifiable claim from an opinion. Compare independent reliable sources before sharing. Practice: trace a headline to the report it describes.'),
-    ('Digital safety', 'Use a unique password for each account and enable two-step verification where available. Never share login codes. Open familiar services directly when an unexpected message asks you to sign in. Practice: review the security settings of one account.'),
-    ('Focused learning', 'Choose one small task, silence unnecessary notifications, and work for a short planned interval. Take a break and check what you understood before continuing. Practice: set a goal such as explaining one concept in your own words.'),
-]
+ABOUT = 'Short study and digital skills lessons, quick quizzes and a simple study-time calculator. Free to use.'
+DESCRIPTION = ('DREW FX ACADEMY offers three free learning tools inside Telegram: '
+               'Lessons: read short tips on studying, clear notes and digital safety. '
+               'Quick quiz: answer a multiple-choice question and see the correct answer. '
+               'Study calculator: choose 30, 60 or 90 minutes to get a simple timetable with breaks. '
+               'Tap Start, then choose a button. General education only; no financial services.')
+MENU = {'keyboard': [[{'text': 'Lessons'}], [{'text': 'Quick quiz'}], [{'text': 'Study calculator'}]], 'resize_keyboard': True}
+LESSON_TEXT = ('Short lessons\n\n'
+               'Study: Read one small section, close your notes and explain the main idea from memory. Check what you missed.\n\n'
+               'Clear notes: Use a topic heading, write the key idea in your own words and add one example.\n\n'
+               'Digital safety: Use unique passwords and two-step verification where available. Keep login codes private.\n\n'
+               'Practice: Choose one tip and apply it today.')
 QUESTIONS = [
-    ('Which action is active recall?', ['Reread a page repeatedly', 'Explain an idea from memory', 'Highlight every sentence'], 1, 'Explaining from memory makes you retrieve information; checking afterwards helps correct gaps.'),
-    ('What is spaced practice?', ['Reviewing across several days', 'Studying everything once', 'Skipping difficult topics'], 0, 'Repeated reviews separated in time give you opportunities to retrieve and strengthen learning.'),
-    ('What should you check before sharing a claim?', ['Only its popularity', 'Only its headline', 'Original source and evidence'], 2, 'A claim needs supporting evidence. Popularity alone does not establish accuracy.'),
-    ('Someone asks for your login code. What should you do?', ['Keep it private', 'Post it in a group', 'Send it immediately'], 0, 'Login codes can give access to your account. Keep them private.'),
-    ('Which note is most useful for understanding?', ['An unexplained copied page', 'An idea in your words with an example', 'A list of unrelated words'], 1, 'Paraphrasing and an example help you check whether you understand the idea.'),
-    ('What is a focused study goal?', ['Learn everything today', 'Keep all notifications open', 'Explain one concept after a session'], 2, 'A specific, manageable goal lets you check your progress.'),
+    ('Which action checks your understanding?', ['Explain an idea from memory', 'Copy a page without reading', 'Highlight every word'], 0, 'Explaining from memory helps reveal gaps. Check your notes afterwards.'),
+    ('What should you do with a login code?', ['Share it publicly', 'Keep it private', 'Send it to strangers'], 1, 'Login codes can give access to your account. Keep them private.'),
+    ('Which note is most useful?', ['Unrelated words', 'An unexplained copied page', 'An idea in your words with an example'], 2, 'Writing an idea in your own words and adding an example helps check understanding.'),
 ]
-MENU = {'keyboard': [[{'text': 'Lessons'}], [{'text': 'Practice quiz'}], [{'text': 'Study planner'}]], 'resize_keyboard': True}
-HELP = ('Choose Lessons, Practice quiz or Study planner.\n\n/lessons — six short lessons\n/quiz — six practice questions\n/plan 90 3 — divide 90 study minutes into 3 sessions\n/menu — main menu\n/about — purpose and description\n/privacy — data information\n/help — instructions\n\nNo payment or channel membership is required.')
-PRIVACY = ('This bot does not write your messages, chat IDs or quiz answers to a database or files. '
-           'Messages and chat IDs are processed temporarily to reply through Telegram. '
-           'Telegram and the hosting provider may retain service metadata under their own policies. '
-           'Do not send passwords, login codes or other sensitive information. Contact the bot owner through the contact details in its Telegram profile for support.')
+PRIVACY = ('The application uses incoming messages and chat IDs only to respond and keeps no user database or activity history. '
+           'Telegram handles messages under its own policies; the host may retain service metadata. '
+           'Do not send sensitive information.')
+HELP = ('Choose one of the three buttons:\nLessons — read three short learning tips.\n'
+        'Quick quiz — answer one question; tap an answer to see the correct answer and explanation.\n'
+        'Study calculator — choose your available time.\n\n'
+        '/start opens the menu. /plan 60 calculates a 60-minute timetable. /privacy explains data use.')
 
 class APIError(Exception):
     def __init__(self, code, retry_after=0):
@@ -64,101 +62,82 @@ class Telegram:
     def send(self, chat, text, markup=MENU):
         return self.call('sendMessage', chat_id=chat, text=text, reply_markup=markup)
 
-def inline(rows):
-    return {'inline_keyboard': [[{'text': title, 'callback_data': data}] for title, data in rows]}
+def plan(minutes):
+    if minutes not in (30, 60, 90):
+        raise ValueError('Choose 30, 60 or 90 minutes.')
+    study = minutes - 5
+    first = (study + 1) // 2
+    second = study // 2
+    return (f'Your {minutes}-minute timetable\n\n'
+            f'Learn and take notes: {first} minutes\n'
+            'Break: 5 minutes\n'
+            f'Practice and recall: {second} minutes\n\n'
+            f'Total including break: {minutes} minutes.\n'
+            'Choose one small topic before you begin.')
 
-def question(api, chat, index):
-    q, choices, _, _ = QUESTIONS[index]
-    api.send(chat, f'Question {index + 1}/{len(QUESTIONS)}\n\n{q}', inline([(v, f'answer:{index}:{i}') for i, v in enumerate(choices)]))
-
-def plan(minutes, sessions):
-    if not 1 <= minutes <= 1440 or not 1 <= sessions <= 24 or sessions > minutes:
-        raise ValueError('Use 1–1440 study minutes and 1–24 sessions, with at least one minute per session.')
-    base, extra = divmod(minutes, sessions)
-    durations = [base + (i < extra) for i in range(sessions)]
-    breaks = 5 * (sessions - 1)
-    return ('Your study timetable\n\n' + '\n'.join(f'Session {i + 1}: {n} minutes' for i, n in enumerate(durations)) +
-            f'\n\nTake a 5-minute break between sessions.\nStudy time: {minutes} minutes\nBreak time: {breaks} minutes\nTotal elapsed time: {minutes + breaks} minutes.\nChoose a topic before each session and finish by recalling its key ideas.')
+def calculator(api, chat):
+    api.send(chat, 'Choose your total study time, including a five-minute break:', {
+        'inline_keyboard': [[{'text': f'{n} minutes', 'callback_data': f'plan:{n}'} for n in (30, 60, 90)]]
+    })
 
 def handle(api, update):
     callback = update.get('callback_query')
+    message = callback.get('message', {}) if callback else update.get('message', {})
     if callback:
         try:
             api.call('answerCallbackQuery', callback_query_id=callback['id'])
         except APIError as exc:
             if exc.code != 400:
                 raise
-            # Expired callbacks must not prevent the lesson or answer response.
-        message = callback.get('message', {})
-        if message.get('chat', {}).get('type') != 'private':
-            return
-        chat = message['chat']['id']
-        parts = callback.get('data', '').split(':')
-        try:
-            if len(parts) == 2 and parts[0] == 'lesson':
-                i = int(parts[1])
-                if not 0 <= i < len(LESSONS):
-                    raise ValueError()
-                title, body = LESSONS[i]
-                api.send(chat, title + '\n\n' + body, inline([('Next lesson', f'lesson:{(i + 1) % len(LESSONS)}'), ('Lesson list', 'lessons')]))
-            elif parts == ['lessons']:
-                lessons(api, chat)
-            elif len(parts) == 2 and parts[0] == 'quiz':
-                i = int(parts[1])
-                if not 0 <= i < len(QUESTIONS):
-                    raise ValueError()
-                question(api, chat, i)
-            elif len(parts) == 3 and parts[0] == 'answer':
-                i, choice = map(int, parts[1:])
-                if not 0 <= i < len(QUESTIONS) or not 0 <= choice < 3:
-                    raise ValueError()
-                _, choices, correct, explanation = QUESTIONS[i]
-                text = ('Correct.' if choice == correct else 'Keep practicing.') + '\nAnswer: ' + choices[correct] + '\n\n' + explanation
-                rows = [('Next question', f'quiz:{i + 1}')] if i + 1 < len(QUESTIONS) else [('Practice again', 'quiz:0')]
-                # Removing the answer buttons also prevents accidental repeated answers.
-                try:
-                    api.call('editMessageReplyMarkup', chat_id=chat, message_id=message['message_id'], reply_markup={'inline_keyboard': []})
-                except APIError as exc:
-                    if exc.code != 400:
-                        raise
-                    # Already edited/old messages can still receive an explanation.
-                api.send(chat, text, inline(rows))
-            else:
-                raise ValueError()
-        except (ValueError, IndexError):
-            api.send(chat, 'That button is no longer valid. Choose a tool from the menu.')
-        return
-    message = update.get('message', {})
     if message.get('chat', {}).get('type') != 'private':
         return
     chat = message['chat']['id']
-    text = message.get('text', '').strip()
+    if callback:
+        data = callback.get('data', '')
+        if data.startswith('quiz:'):
+            parts = data.split(':')
+            if len(parts) == 3 and parts[1] in ('0', '1', '2') and parts[2] in ('0', '1', '2'):
+                _, options, correct, explanation = QUESTIONS[int(parts[1])]
+                result = 'Correct.' if int(parts[2]) == correct else 'Not quite.'
+                api.send(chat, f'{result}\nAnswer: {options[correct]}\n\n{explanation}')
+            else:
+                api.send(chat, 'Choose Quick quiz to start a new question.')
+        elif data in ('plan:30', 'plan:60', 'plan:90'):
+            api.send(chat, plan(int(data.split(':')[1])))
+        else:
+            api.send(chat, 'This is an older button. Choose one of the three tools below.')
+        return
+    text = (message.get('text') or '').strip()
     cmd = text.split()[0].split('@')[0].lower() if text else ''
     if cmd in ('/start', '/menu', '/cancel'):
-        api.send(chat, f'Welcome to {NAME}.\n\nLearn study and digital skills with three free tools: Lessons, Practice quiz and Study planner. Choose a button below. Use /help for instructions.')
+        api.send(chat, f'Welcome to {NAME}. Choose one of three free tools below: Lessons, Quick quiz or Study calculator.')
+    elif cmd == '/lessons' or text == 'Lessons':
+        api.send(chat, LESSON_TEXT)
+    elif cmd == '/quiz' or text in ('Quick quiz', 'Practice quiz'):
+        index = random.randrange(len(QUESTIONS))
+        question, options, _, _ = QUESTIONS[index]
+        api.send(chat, question, {'inline_keyboard': [
+            [{'text': option, 'callback_data': f'quiz:{index}:{i}'}] for i, option in enumerate(options)
+        ]})
+    elif cmd == '/plan' and len(text.split()) > 1:
+        try:
+            parts = text.split()
+            if len(parts) != 2:
+                raise ValueError()
+            api.send(chat, plan(int(parts[1])))
+        except ValueError:
+            api.send(chat, 'Choose 30, 60 or 90 minutes, for example /plan 60.')
+            calculator(api, chat)
+    elif cmd == '/plan' or text in ('Study calculator', 'Study planner'):
+        calculator(api, chat)
     elif cmd == '/help':
         api.send(chat, HELP)
-    elif cmd == '/about':
-        api.send(chat, NAME + '\n\n' + ABOUT + '\n\n' + DESCRIPTION)
     elif cmd == '/privacy':
         api.send(chat, PRIVACY)
-    elif cmd == '/lessons' or text == 'Lessons':
-        lessons(api, chat)
-    elif cmd == '/quiz' or text == 'Practice quiz':
-        question(api, chat, 0)
-    elif text == 'Study planner' or text == '/plan':
-        api.send(chat, 'Send /plan followed by study minutes and number of sessions.\nExample: /plan 90 3\nBreaks are added separately. Use /menu to return.')
-    elif cmd == '/plan':
-        try:
-            _, minutes, sessions = text.split()
-            api.send(chat, plan(int(minutes), int(sessions)))
-        except ValueError:
-            api.send(chat, 'Use /plan 90 3 for 90 study minutes in 3 sessions. Enter whole numbers: 1–1440 minutes, 1–24 sessions, at least one minute per session.')
+    elif cmd == '/about':
+        api.send(chat, DESCRIPTION)
     else:
-        api.send(chat, 'Choose a tool below, or use /help. For a timetable, try /plan 90 3.')
-
-def lessons(api, chat):
-    api.send(chat, 'Choose a short lesson:', inline([(v[0], f'lesson:{i}') for i, v in enumerate(LESSONS)]))
+        api.send(chat, 'Choose Lessons, Quick quiz or Study calculator below. Use /help for instructions.')
 
 RUNNING = True
 
@@ -179,7 +158,7 @@ def main():
         for language in ('', 'en'):
             api.call('setMyShortDescription', short_description=ABOUT, language_code=language)
             api.call('setMyDescription', description=DESCRIPTION, language_code=language)
-        commands = [('start', 'Open the three learning tools'), ('lessons', 'Read short lessons'), ('quiz', 'Practice with explanations'), ('plan', 'Calculate a study timetable'), ('menu', 'Return to main menu'), ('help', 'How to use this bot'), ('about', 'About DREW FX ACADEMY'), ('privacy', 'Data and privacy information')]
+        commands = [('start', 'Open the three tools'), ('lessons', 'Read short learning tips'), ('quiz', 'Answer a quick quiz'), ('plan', 'Calculate study time')]
         api.call('setMyCommands', commands=[{'command': c, 'description': d} for c, d in commands])
         api.call('deleteWebhook', drop_pending_updates=False)
     except APIError as exc:
