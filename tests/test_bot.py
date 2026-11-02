@@ -14,6 +14,18 @@ class BotTests(unittest.TestCase):
         bot.handle(api, {'message': {'chat': {'id': 123, 'type': 'private'}, 'text': text}})
     def callback(self, api, data):
         bot.handle(api, {'callback_query': {'id': 'q', 'data': data, 'message': {'message_id': 1, 'chat': {'id': 123, 'type': 'private'}}}})
+    def test_expired_callback_and_already_edited_quiz(self):
+        class OldMessageAPI(FakeAPI):
+            def call(self, method, **data):
+                if method in ('answerCallbackQuery', 'editMessageReplyMarkup'):
+                    raise bot.APIError(400)
+                return super().call(method, **data)
+        api = OldMessageAPI()
+        self.callback(api, 'answer:0:1')
+        self.assertIn('Correct.', api.calls[-1][1]['text'])
+        self.callback(api, 'lesson:0')
+        self.assertIn('Active recall', api.calls[-1][1]['text'])
+
     def test_profile_limits(self):
         self.assertLessEqual(len(bot.ABOUT), 120)
         self.assertLessEqual(len(bot.DESCRIPTION), 512)
