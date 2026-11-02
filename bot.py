@@ -68,7 +68,7 @@ def transform(mode, text):
         # Separate messages avoid overflowing Telegram after Unicode case expansion.
         return ['UPPERCASE\n' + text.upper(), 'lowercase\n' + text.lower()]
     if mode == 'clean':
-        lines = [re.sub(r'[^\\S\\n]+', ' ', line).strip() for line in text.split('\n')]
+        lines = [' '.join(line.split()) for line in text.split('\n')]
         return 'Cleaned text:\n' + '\n'.join(lines).strip()
     raise ValueError('Choose a tool from the menu.')
 
