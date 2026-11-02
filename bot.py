@@ -1,38 +1,31 @@
-"""Three simple educational tools for @DREWFXACADEMY_BOT. Python 3.12+."""
+"""Three local text tools for @DREWFXACADEMY_BOT."""
 import json
 import logging
 import os
-import random
+import re
 import signal
 import time
 from urllib import request, error
 
 NAME = 'DREW FX ACADEMY'
 USERNAME = 'DREWFXACADEMY_BOT'
-ABOUT = 'Short study and digital skills lessons, quick quizzes and a simple study-time calculator. Free to use.'
-DESCRIPTION = ('DREW FX ACADEMY offers three free learning tools inside Telegram: '
-               'Lessons: read short tips on studying, clear notes and digital safety. '
-               'Quick quiz: answer a multiple-choice question and see the correct answer. '
-               'Study calculator: choose 30, 60 or 90 minutes to get a simple timetable with breaks. '
-               'Tap Start, then choose a button. General education only; no financial services.')
-MENU = {'keyboard': [[{'text': 'Lessons'}], [{'text': 'Quick quiz'}], [{'text': 'Study calculator'}]], 'resize_keyboard': True}
-LESSON_TEXT = ('Short lessons\n\n'
-               'Study: Read one small section, close your notes and explain the main idea from memory. Check what you missed.\n\n'
-               'Clear notes: Use a topic heading, write the key idea in your own words and add one example.\n\n'
-               'Digital safety: Use unique passwords and two-step verification where available. Keep login codes private.\n\n'
-               'Practice: Choose one tip and apply it today.')
-QUESTIONS = [
-    ('Which action checks your understanding?', ['Explain an idea from memory', 'Copy a page without reading', 'Highlight every word'], 0, 'Explaining from memory helps reveal gaps. Check your notes afterwards.'),
-    ('What should you do with a login code?', ['Share it publicly', 'Keep it private', 'Send it to strangers'], 1, 'Login codes can give access to your account. Keep them private.'),
-    ('Which note is most useful?', ['Unrelated words', 'An unexplained copied page', 'An idea in your words with an example'], 2, 'Writing an idea in your own words and adding an example helps check understanding.'),
-]
-PRIVACY = ('The application uses incoming messages and chat IDs only to respond and keeps no user database or activity history. '
-           'Telegram handles messages under its own policies; the host may retain service metadata. '
-           'Do not send sensitive information.')
-HELP = ('Choose one of the three buttons:\nLessons — read three short learning tips.\n'
-        'Quick quiz — answer one question; tap an answer to see the correct answer and explanation.\n'
-        'Study calculator — choose your available time.\n\n'
-        '/start opens the menu. /plan 60 calculates a 60-minute timetable. /privacy explains data use.')
+ABOUT = 'Free text tools: count words and characters, convert letter case and remove extra spaces directly in Telegram.'
+DESCRIPTION = ('DREW FX ACADEMY provides three free text tools: '
+               'Word counter: count words, characters and lines. '
+               'Case converter: get uppercase and lowercase versions of your text. '
+               'Space cleaner: remove extra spaces while keeping line breaks. '
+               'Tap Start, choose a tool and send up to 1500 characters. '
+               'Results appear directly in Telegram. No payment or channel membership is required.')
+MENU = {'keyboard': [[{'text': 'Word counter'}], [{'text': 'Case converter'}], [{'text': 'Space cleaner'}]], 'resize_keyboard': True}
+MODES = {'Word counter': 'count', 'Case converter': 'case', 'Space cleaner': 'clean'}
+SESSIONS = {}
+LIMIT = 1500
+PRIVACY = ('Text and chat IDs are processed to reply. Only your chosen tool is stored in server memory for up to 30 minutes, '
+           'cleared by /cancel or a restart. No text history or database is kept by this application. '
+           'Telegram and the host process data under their own policies. Do not send sensitive information.')
+HELP = ('Choose Word counter, Case converter or Space cleaner, then send text. '
+        'You can also send /count your text, /case your text or /clean your text. '
+        'Maximum: 1500 characters. /cancel clears your tool selection. /privacy explains data use.')
 
 class APIError(Exception):
     def __init__(self, code, retry_after=0):
@@ -62,25 +55,28 @@ class Telegram:
     def send(self, chat, text, markup=MENU):
         return self.call('sendMessage', chat_id=chat, text=text, reply_markup=markup)
 
-def plan(minutes):
-    if minutes not in (30, 60, 90):
-        raise ValueError('Choose 30, 60 or 90 minutes.')
-    study = minutes - 5
-    first = (study + 1) // 2
-    second = study // 2
-    return (f'Your {minutes}-minute timetable\n\n'
-            f'Learn and take notes: {first} minutes\n'
-            'Break: 5 minutes\n'
-            f'Practice and recall: {second} minutes\n\n'
-            f'Total including break: {minutes} minutes.\n'
-            'Choose one small topic before you begin.')
-
-def calculator(api, chat):
-    api.send(chat, 'Choose your total study time, including a five-minute break:', {
-        'inline_keyboard': [[{'text': f'{n} minutes', 'callback_data': f'plan:{n}'} for n in (30, 60, 90)]]
-    })
+def transform(mode, text):
+    if not text.strip():
+        raise ValueError('Please send some text.')
+    if len(text) > LIMIT:
+        raise ValueError('Please send no more than 1500 characters.')
+    if mode == 'count':
+        return (f'Words (separated by whitespace): {len(text.split())}\n'
+                f'Characters (Unicode code points, including spaces): {len(text)}\n'
+                f'Lines: {len(text.splitlines())}')
+    if mode == 'case':
+        # Separate messages avoid overflowing Telegram after Unicode case expansion.
+        return ['UPPERCASE\n' + text.upper(), 'lowercase\n' + text.lower()]
+    if mode == 'clean':
+        lines = [re.sub(r'[^\\S\\n]+', ' ', line).strip() for line in text.split('\n')]
+        return 'Cleaned text:\n' + '\n'.join(lines).strip()
+    raise ValueError('Choose a tool from the menu.')
 
 def handle(api, update):
+    now = time.monotonic()
+    for key in list(SESSIONS):
+        if now - SESSIONS[key][1] > 1800:
+            del SESSIONS[key]
     callback = update.get('callback_query')
     message = callback.get('message', {}) if callback else update.get('message', {})
     if callback:
@@ -93,51 +89,57 @@ def handle(api, update):
         return
     chat = message['chat']['id']
     if callback:
-        data = callback.get('data', '')
-        if data.startswith('quiz:'):
-            parts = data.split(':')
-            if len(parts) == 3 and parts[1] in ('0', '1', '2') and parts[2] in ('0', '1', '2'):
-                _, options, correct, explanation = QUESTIONS[int(parts[1])]
-                result = 'Correct.' if int(parts[2]) == correct else 'Not quite.'
-                api.send(chat, f'{result}\nAnswer: {options[correct]}\n\n{explanation}')
-            else:
-                api.send(chat, 'Choose Quick quiz to start a new question.')
-        elif data in ('plan:30', 'plan:60', 'plan:90'):
-            api.send(chat, plan(int(data.split(':')[1])))
-        else:
-            api.send(chat, 'This is an older button. Choose one of the three tools below.')
+        api.send(chat, 'The tools have been updated. Choose one of the three text tools below.')
         return
-    text = (message.get('text') or '').strip()
-    cmd = text.split()[0].split('@')[0].lower() if text else ''
+    text = message.get('text')
+    if not isinstance(text, str):
+        api.send(chat, 'Please send a text message. Photos, files and voice notes are not supported.')
+        return
+    parts = text.split(maxsplit=1)
+    cmd = parts[0].split('@')[0].lower() if parts else ''
     if cmd in ('/start', '/menu', '/cancel'):
-        api.send(chat, f'Welcome to {NAME}. Choose one of three free tools below: Lessons, Quick quiz or Study calculator.')
-    elif cmd == '/lessons' or text == 'Lessons':
-        api.send(chat, LESSON_TEXT)
-    elif cmd == '/quiz' or text in ('Quick quiz', 'Practice quiz'):
-        index = random.randrange(len(QUESTIONS))
-        question, options, _, _ = QUESTIONS[index]
-        api.send(chat, question, {'inline_keyboard': [
-            [{'text': option, 'callback_data': f'quiz:{index}:{i}'}] for i, option in enumerate(options)
-        ]})
-    elif cmd == '/plan' and len(text.split()) > 1:
-        try:
-            parts = text.split()
-            if len(parts) != 2:
-                raise ValueError()
-            api.send(chat, plan(int(parts[1])))
-        except ValueError:
-            api.send(chat, 'Choose 30, 60 or 90 minutes, for example /plan 60.')
-            calculator(api, chat)
-    elif cmd == '/plan' or text in ('Study calculator', 'Study planner'):
-        calculator(api, chat)
-    elif cmd == '/help':
-        api.send(chat, HELP)
-    elif cmd == '/privacy':
-        api.send(chat, PRIVACY)
-    elif cmd == '/about':
-        api.send(chat, DESCRIPTION)
+        SESSIONS.pop(chat, None)
+        api.send(chat, f'Welcome to {NAME}. Count words, convert letter case or clean extra spaces. Choose a tool, then send your text.')
+    elif cmd in ('/help', '/privacy', '/about'):
+        api.send(chat, {'/help': HELP, '/privacy': PRIVACY, '/about': DESCRIPTION}[cmd])
+    elif text in MODES or cmd in ('/count', '/case', '/clean'):
+        mode = MODES[text] if text in MODES else cmd[1:]
+        if len(SESSIONS) >= 10000 and chat not in SESSIONS:
+            SESSIONS.pop(next(iter(SESSIONS)))
+        SESSIONS[chat] = (mode, now)
+        if text not in MODES and len(parts) == 2:
+            respond(api, chat, mode, parts[1])
+        else:
+            api.send(chat, f'{dict(count="Word counter", case="Case converter", clean="Space cleaner")[mode]} selected. Send your text (up to 1500 characters).')
+    elif cmd.startswith('/'):
+        api.send(chat, 'Use /count, /case or /clean, or choose a button. /help shows instructions.')
+    elif chat in SESSIONS:
+        mode = SESSIONS[chat][0]
+        SESSIONS[chat] = (mode, now)
+        respond(api, chat, mode, text)
     else:
-        api.send(chat, 'Choose Lessons, Quick quiz or Study calculator below. Use /help for instructions.')
+        api.send(chat, 'Choose Word counter, Case converter or Space cleaner first, then send your text.')
+
+def respond(api, chat, mode, text):
+    try:
+        result = transform(mode, text)
+    except ValueError as exc:
+        api.send(chat, str(exc))
+        return
+    for output in result if isinstance(result, list) else [result]:
+        # Cap by UTF-16 length as well as Python length for Telegram's message limit.
+        chunks, chunk, units = [], '', 0
+        for char in output:
+            size = 2 if ord(char) > 65535 else 1
+            if units + size > 3500:
+                chunks.append(chunk)
+                chunk, units = '', 0
+            chunk += char
+            units += size
+        if chunk:
+            chunks.append(chunk)
+        for chunk in chunks:
+            api.send(chat, chunk)
 
 RUNNING = True
 
@@ -158,7 +160,7 @@ def main():
         for language in ('', 'en'):
             api.call('setMyShortDescription', short_description=ABOUT, language_code=language)
             api.call('setMyDescription', description=DESCRIPTION, language_code=language)
-        commands = [('start', 'Open the three tools'), ('lessons', 'Read short learning tips'), ('quiz', 'Answer a quick quiz'), ('plan', 'Calculate study time')]
+        commands = [('start', 'Open the three text tools'), ('count', 'Count words and characters'), ('case', 'Convert uppercase and lowercase'), ('clean', 'Remove extra spaces'), ('cancel', 'Clear selected tool'), ('help', 'Instructions'), ('privacy', 'Data information')]
         api.call('setMyCommands', commands=[{'command': c, 'description': d} for c, d in commands])
         api.call('deleteWebhook', drop_pending_updates=False)
     except APIError as exc:
