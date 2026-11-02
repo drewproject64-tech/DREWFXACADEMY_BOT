@@ -1,53 +1,49 @@
 # DREW FX ACADEMY
+Telegram: https://t.me/DREWFXACADEMY_BOT
 
-Telegram username: **@DREWFXACADEMY_BOT**. Python 3.12+; no external dependencies.
+Simple English educational bot with exactly three main buttons:
 
-## Three complete functions
+1. **Lessons** — immediately reads out three short tips on studying, clear notes and digital safety.
+2. **Quick quiz** — one multiple-choice question per tap, with the correct answer and explanation after choosing an answer.
+3. **Study calculator** — choose 30, 60 or 90 minutes to calculate two study blocks and a five-minute break. The total includes the break.
 
-1. **Lessons**: six lessons on recall, spaced practice, clear notes, checking information, digital safety and focus, each with an exercise and navigation.
-2. **Practice quiz**: six multiple-choice questions, immediate answer explanations and replay.
-3. **Study planner**: `/plan 90 3` divides 90 study minutes into three sessions, adds breaks and calculates total elapsed time. Input validation is included.
+No database, AI service, payments, membership gates or external redirects. No financial services. About and Description are defined in bot.py and configured at startup for default and English profiles. The name and command menu are also configured automatically. /start opens the three-button menu; /help, /about and /privacy provide basic information rather than extra tools.
 
-The bot also supports `/start`, `/menu`, `/help`, `/about` and `/privacy`. No payment, membership gate or external redirect is used.
+## Deployment — managed by the owner
+This rebuild was committed with [skip render] so deployment is left to the owner.
 
-## Run
-
-Create the bot with @BotFather using the exact username above. Set `BOT_TOKEN` as a private environment variable in your host, then run:
+Use Python 3.12 or newer. Set BOT_TOKEN privately in the hosting environment to the token belonging to @DREWFXACADEMY_BOT. Start with:
 
 ```sh
 python bot.py
 ```
 
-For a local bash terminal, use `read -rs BOT_TOKEN`, enter the token, then `export BOT_TOKEN` before starting. `.env.example` documents the setting; the program reads environment variables, not .env files. Do not commit a token.
+The existing requirements.txt has no third-party dependencies. Run only one polling instance. The bot verifies its username before changing the profile. It removes an existing webhook without dropping pending updates. Never put a real token into GitHub.
 
-On a hosting service use one always-running Python background worker, build command `pip install -r requirements.txt`, start command `python bot.py`. Do not use a sleeping static site or run two polling instances with the same token. The bot removes an existing webhook at startup to enable polling. SIGTERM and SIGINT are handled.
+Deploy the latest main commit manually when ready. Startup logs should show the expected username and successful profile configuration, followed by a healthy polling log. Polling health alone does not prove a user-facing response.
 
-## About and description in code
+## Verify before requesting ad review
+Open the live bot on mobile and desktop:
+- Send /start and check that exactly three tool buttons appear.
+- Tap Lessons and verify the tips arrive.
+- Tap Quick quiz, choose an answer and verify the explanation arrives.
+- Tap Study calculator, then test each duration.
+- Check the profile image, About and Description.
 
-`ABOUT` and `DESCRIPTION` in `bot.py` contain the complete profile text. At startup the bot calls `setMyName`, `setMyShortDescription`, `setMyDescription` and `setMyCommands`. It first checks that the token belongs to the expected username. Telegram must accept these calls before polling begins.
+The code includes no image upload: set a relevant profile image through BotFather. Keep the ad, profile and actual long-term purpose consistent. Do not conceal or replace another service to evade moderation.
 
-Upload a relevant profile image using @BotFather. Add owner contact details to the Telegram profile so users can reach the operator. Profile image upload is a separate setup step; the bot does not claim it has already been completed.
+Telegram requires active, technically complete bots that respond to commands. Reducing features cannot by itself resolve hosting downtime, a wrong token or a second polling process. Approval is decided by Telegram.
 
-## Honest destination and ad use
+References checked November 2, 2026:
+- https://ads.telegram.org/guidelines
+- https://core.telegram.org/bots/api
 
-This is a general learning bot under the requested brand name. It does not provide forex signals, brokerage, investment advice or financial services. Keep the name, profile, advertised features and actual long-term service consistent. Do not conceal another service or replace content to get through moderation. Telegram decides eligibility and review timing; no approval is guaranteed.
-
-Suggested English ad text:
-
-> Explore study and digital skills with DREW FX ACADEMY. Read short lessons, try practice quizzes and calculate a study timetable in Telegram.
-
-Destination: https://t.me/DREWFXACADEMY_BOT
-
-Match the targeting language to the bot and ad. Before submission, launch the worker, add the profile image and test all three functions on mobile and desktop.
-
-Policy reference: https://ads.telegram.org/guidelines
-
-## Privacy and reliability
-
-No database, user tracking, message logging or third-party AI API. Update data is processed transiently to respond. Telegram and host infrastructure may retain service metadata. The privacy message explains this. Polling retries temporary failures without logging tokens or message contents. A restart can replay a pending update; the quiz uses stateless callbacks and no permanent score. An unavailable or blocked chat does not stop the worker. Invalid credentials or a polling conflict stop it with a clear error.
-
-## Tests
-
+## Offline tests
 ```sh
 python -m unittest discover -s tests -v
 ```
+
+Tests cover three-button navigation, quiz answers, all calculator choices, invalid inputs, expired callbacks, old buttons and profile text limits. Live testing requires the owner's deployed bot.
+
+## Privacy
+No user database or activity history is stored by the application. Messages and chat identifiers are processed to respond. Telegram and hosting infrastructure may retain service metadata under their own policies. Logs contain status information, not message content or credentials.
